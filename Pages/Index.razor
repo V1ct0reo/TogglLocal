@@ -1,0 +1,73 @@
+@page "/"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject TogglAnalysis.Services.TogglService TogglService
+@using TogglAnalysis.Models
+
+<PageTitle>Dashboard</PageTitle>
+
+<h1>Dashboard</h1>
+
+@if (!TogglService.HasApiKey)
+{
+    <div class="alert alert-warning">
+        Please set your API Key in <a href="settings">Settings</a> to start.
+    </div>
+}
+else
+{
+    <div class="mb-4">
+        <button class="btn btn-primary" @onclick="SyncData" disabled="@IsSyncing">
+            @if (IsSyncing) 
+            { 
+                <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                <span>Syncing...</span>
+            }
+            else
+            {
+                <span>Sync Data (Last 30 Days)</span>
+            }
+        </button>
+        @if (LastSyncTime.HasValue)
+        {
+            <span class="ms-3 text-muted">Last sync: @LastSyncTime.Value.ToLocalTime().ToString("g")</span>
+        }
+    </div>
+    
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="alert alert-danger">@ErrorMessage</div>
+    }
+
+    <div class="row">
+        <div class="col-md-12">
+            <h3>Welcome to your Toggl Analysis</h3>
+            <p>Go to the <a href="analysis">Analysis</a> page to view your data.</p>
+        </div>
+    </div>
+}
+
+@code {
+    private bool IsSyncing = false;
+    private DateTime? LastSyncTime;
+    private string? ErrorMessage;
+
+    private async Task SyncData()
+    {
+        IsSyncing = true;
+        ErrorMessage = null;
+        try
+        {
+            await TogglService.SyncTimeEntriesAsync(DateTime.UtcNow.AddDays(-30), DateTime.UtcNow);
+            LastSyncTime = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Sync failed: {ex.Message}";
+        }
+        finally
+        {
+            IsSyncing = false;
+        }
+    }
+}

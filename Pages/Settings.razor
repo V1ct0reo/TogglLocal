@@ -1,0 +1,61 @@
+@page "/settings"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject TogglAnalysis.Services.TogglService TogglService
+@inject NavigationManager Navigation
+
+<h3>Settings</h3>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="mb-3">
+            <label for="apiKey" class="form-label">Toggl API Token</label>
+            <input type="password" class="form-control" id="apiKey" @bind="ApiKey" placeholder="Enter your Toggl API Token" />
+            <div class="form-text">You can find your API token in your Toggl Profile settings.</div>
+        </div>
+        <button class="btn btn-primary" @onclick="SaveApiKey">Save & Continue</button>
+        <button class="btn btn-secondary ms-2" @onclick="LoadFromEnvironment">Load from Environment</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(Message))
+{
+    <div class="alert alert-info mt-3">
+        @Message
+    </div>
+}
+
+@code {
+    private string ApiKey { get; set; } = "";
+    private string? Message;
+
+    private void LoadFromEnvironment()
+    {
+        var envKey = Environment.GetEnvironmentVariable("TOGGL_API_KEY");
+        var envToken = Environment.GetEnvironmentVariable("TOGGL_API_TOKEN");
+        
+        if (!string.IsNullOrWhiteSpace(envKey))
+        {
+            ApiKey = envKey;
+            Message = "API Key loaded from environment variable 'TOGGL_API_KEY'.";
+        }
+        else if (!string.IsNullOrWhiteSpace(envToken))
+        {
+            ApiKey = envToken;
+            Message = "API Token loaded from environment variable 'TOGGL_API_TOKEN'.";
+        }
+        else
+        {
+            Message = "Environment variables 'TOGGL_API_KEY' or 'TOGGL_API_TOKEN' not found.";
+        }
+    }
+
+    private void SaveApiKey()
+    {
+        if (!string.IsNullOrWhiteSpace(ApiKey))
+        {
+            TogglService.SetApiKey(ApiKey);
+            Navigation.NavigateTo("/");
+        }
+    }
+}

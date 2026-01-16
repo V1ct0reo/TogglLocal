@@ -1,0 +1,108 @@
+@page "/users"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@using Microsoft.AspNetCore.Identity
+@using TogglAnalysis.Models
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+
+<h3>User Management</h3>
+
+<div class="card mb-4">
+    <div class="card-header">Create New User</div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-4">
+                <input type="text" class="form-control" placeholder="Username" @bind="NewUsername" />
+            </div>
+            <div class="col-md-4">
+                <input type="password" class="form-control" placeholder="Password" @bind="NewPassword" />
+            </div>
+            <div class="col-md-4">
+                <button class="btn btn-success" @onclick="CreateUser">Create User</button>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(Message))
+        {
+            <div class="alert @MessageClass mt-2">@Message</div>
+        }
+    </div>
+</div>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Toggl API Key</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var user in UserList)
+        {
+            <tr>
+                <td>@user.UserName</td>
+                <td>@user.Email</td>
+                <td>@(string.IsNullOrEmpty(user.TogglApiKey) ? "Not Set" : "****")</td>
+                <td>
+                    <button class="btn btn-sm btn-danger" @onclick="() => DeleteUser(user)">Delete</button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private string NewUsername = "";
+    private string NewPassword = "";
+    private string? Message;
+    private string MessageClass = "alert-info";
+    private List<ApplicationUser> UserList = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsers();
+    }
+
+    private async Task LoadUsers()
+    {
+        UserList = UserManager.Users.ToList();
+    }
+
+    private async Task CreateUser()
+    {
+        if (string.IsNullOrWhiteSpace(NewUsername) || string.IsNullOrWhiteSpace(NewPassword))
+        {
+            Message = "Username and password are required.";
+            MessageClass = "alert-warning";
+            return;
+        }
+
+        var user = new ApplicationUser { UserName = NewUsername, Email = $"{NewUsername}@example.com" };
+        var result = await UserManager.CreateAsync(user, NewPassword);
+
+        if (result.Succeeded)
+        {
+            Message = $"User '{NewUsername}' created successfully.";
+            MessageClass = "alert-success";
+            NewUsername = "";
+            NewPassword = "";
+            await LoadUsers();
+        }
+        else
+        {
+            Message = "Error: " + string.Join(", ", result.Errors.Select(e => e.Description));
+            MessageClass = "alert-danger";
+        }
+    }
+
+    private async Task DeleteUser(ApplicationUser user)
+    {
+        var result = await UserManager.DeleteAsync(user);
+        if (result.Succeeded)
+        {
+            await LoadUsers();
+        }
+    }
+}

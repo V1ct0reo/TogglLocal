@@ -1,0 +1,130 @@
+@page "/analysis"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject TogglAnalysis.Services.TogglService TogglService
+@using TogglAnalysis.Models
+
+<h3>Analysis</h3>
+
+<div class="row mb-3">
+    <div class="col-md-4">
+        <label class="form-label">Start Date</label>
+        <input type="date" class="form-control" @bind="StartDate" />
+    </div>
+    <div class="col-md-4">
+        <label class="form-label">End Date</label>
+        <input type="date" class="form-control" @bind="EndDate" />
+    </div>
+    <div class="col-md-4 d-flex align-items-end">
+        <button class="btn btn-secondary" @onclick="LoadData">Load Data</button>
+    </div>
+</div>
+
+@if (TimeEntries == null)
+{
+    <p><em>Loading...</em></p>
+}
+else if (!TimeEntries.Any())
+{
+    <p>No entries found for this period.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th>Start</th>
+                    <th>Duration</th>
+                    <th>Project</th>
+                    <th>Client</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var entry in TimeEntries)
+                {
+                    <tr>
+                        <td>@entry.Description</td>
+                        <td>@entry.Start.ToLocalTime().ToString("g")</td>
+                        <td>@entry.GetDuration().ToString(@"hh\:mm\:ss")</td>
+                        <td>@GetProjectName(entry.ProjectId)</td>
+                        <td>@GetClientName(entry.ProjectId)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private DateTime StartDate = DateTime.Today.AddDays(-7);
+    private DateTime EndDate = DateTime.Today.AddDays(1);
+    private List<TimeEntry>? TimeEntries;
+    private Dictionary<long, Project> Projects = new();
+    private Dictionary<long, Client> Clients = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        TimeEntries = await TogglService.GetLocalTimeEntriesAsync(StartDate, EndDate);
+
+        // Fetch metadata if we have an API key
+        if (TogglService.HasApiKey)
+        {
+            try 
+            {
+                var workspaces = await TogglService.FetchWorkspacesAsync();
+                foreach (var ws in workspaces)
+                {
+                    var projects = await TogglService.FetchProjectsAsync(ws.Id);
+                    foreach (var p in projects)
+                    {
+                        if (!Projects.ContainsKey(p.Id))
+                        {
+                            Projects[p.Id] = p;
+                        }
+                    }
+
+                    var clients = await TogglService.FetchClientsAsync(ws.Id);
+                    foreach (var c in clients)
+                    {
+                        if (!Clients.ContainsKey(c.Id))
+                        {
+                            Clients[c.Id] = c;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching metadata: {ex.Message}");
+            }
+        }
+    }
+
+    private string GetProjectName(long? projectId)
+    {
+        if (projectId.HasValue && Projects.TryGetValue(projectId.Value, out var project))
+        {
+            return project.Name;
+        }
+        return projectId?.ToString() ?? "-";
+    }
+
+    private string GetClientName(long? projectId)
+    {
+        if (projectId.HasValue && Projects.TryGetValue(projectId.Value, out var project))
+        {
+            if (project.ClientId.HasValue && Clients.TryGetValue(project.ClientId.Value, out var client))
+            {
+                return client.Name;
+            }
+        }
+        return "-";
+    }
+}
