@@ -2,7 +2,9 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
 @inject TogglAnalysis.Services.TogglService TogglService
+@inject TogglAnalysis.Data.AppDbContext DbContext
 @using TogglAnalysis.Models
+@using Microsoft.EntityFrameworkCore
 
 <h3>Analysis</h3>
 
@@ -20,7 +22,14 @@
     </div>
 </div>
 
-@if (TimeEntries == null)
+@if (IsLoading)
+{
+    <div class="d-flex flex-column align-items-center justify-content-center my-5">
+        <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Style="width: 300px; margin-bottom: 20px;" />
+        <p class="text-muted" style="font-family: 'Inter', sans-serif;">Analyzing your time data...</p>
+    </div>
+}
+else if (TimeEntries == null)
 {
     <p><em>Loading...</em></p>
 }
@@ -30,6 +39,169 @@ else if (!TimeEntries.Any())
 }
 else
 {
+    <div class="card mb-5 shadow-sm border-0" style="border-radius: 12px; overflow: hidden;">
+        <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center pt-4 px-4 pb-0">
+            <h5 class="fw-bold mb-0 text-primary" style="font-family: 'Inter', sans-serif;">Project Trends</h5>
+            <RadzenSelectBar Value="SelectedChartType" TValue="int" Size="ButtonSize.Small" ValueChanged="@OnChartTypeChanged">
+                <Items>
+                    <RadzenSelectBarItem Text="Stacked Bar" Value="1" />
+                    <RadzenSelectBarItem Text="Line Chart" Value="2" />
+                    <RadzenSelectBarItem Text="Stacked Area" Value="4" />
+                    <RadzenSelectBarItem Text="Pie Chart" Value="3" />
+                    <RadzenSelectBarItem Text="Scatter Plot" Value="5" />
+                </Items>
+            </RadzenSelectBar>
+        </div>
+        <div class="card-body p-4 bg-light">
+            @if (SelectedChartType == 3)
+            {
+                <RadzenChart>
+                    <RadzenPieSeries Data="@PieChartData" Title="Total Hours" CategoryProperty="ProjectName" ValueProperty="TotalHours">
+                        <TooltipTemplate Context="data">
+                            @{
+                                var psh = (ProjectSummaryHours)data;
+                                <div style="padding: 5px;">
+                                    <strong style="display: block; margin-bottom: 5px;">@psh.ProjectName</strong>
+                                    <span>Total: @FormatAsHours(psh.TotalHours)</span>
+                                </div>
+                            }
+                        </TooltipTemplate>
+                    </RadzenPieSeries>
+                    <RadzenLegend Position="LegendPosition.Right" />
+                </RadzenChart>
+            }
+            else if (SelectedChartType == 5)
+            {
+                <RadzenChart>
+                    @foreach (var projectName in ScatterChartData.Select(d => d.ProjectName).Distinct())
+                    {
+                        <RadzenLineSeries Data="@ScatterChartData.Where(d => d.ProjectName == projectName)" 
+                                             CategoryProperty="XOffset" 
+                                             ValueProperty="Hours" 
+                                             Title="@projectName"
+                                             StrokeWidth="0">
+                            <ChildContent>
+                                <RadzenMarkers MarkerType="MarkerType.Circle" />
+                            </ChildContent>
+                            <TooltipTemplate Context="data">
+                                @{
+                                    var se = (ScatterEntry)data;
+                                    <div style="padding: 5px;">
+                                        <strong style="display: block; margin-bottom: 5px;">@se.ProjectName</strong>
+                                        <span class="d-block mb-1">@se.Start.ToString("MMM dd HH:mm")</span>
+                                        <span class="d-block mb-1 text-muted" style="font-size: 0.9em; max-width: 200px; white-space: normal;">@se.Description</span>
+                                        <span>Duration: <strong>@FormatAsHours(se.Hours)</strong></span>
+                                    </div>
+                                }
+                            </TooltipTemplate>
+                        </RadzenLineSeries>
+                    }
+                    <RadzenCategoryAxis Formatter="@FormatProjectAxis">
+                        <RadzenGridLines Visible="false" />
+                        <RadzenAxisTitle Text="Project" />
+                    </RadzenCategoryAxis>
+                    <RadzenValueAxis Formatter="@FormatAsHours">
+                        <RadzenGridLines Visible="true" />
+                        <RadzenAxisTitle Text="Hours Logged" />
+                    </RadzenValueAxis>
+                    <RadzenLegend Position="LegendPosition.Bottom" />
+                </RadzenChart>
+            }
+            else
+            {
+                <RadzenChart>
+                    @foreach (var projectName in ChartData.Select(d => d.ProjectName).Distinct())
+                    {
+                        @if (SelectedChartType == 1)
+                        {
+                            <RadzenStackedColumnSeries Data="@ChartData.Where(d => d.ProjectName == projectName)" 
+                                                       CategoryProperty="Date" 
+                                                       Title="@projectName" 
+                                                       ValueProperty="Hours">
+                                <TooltipTemplate Context="data">
+                                    @{
+                                        var dph = (DailyProjectHours)data;
+                                        var dayRecords = ChartData.Where(x => x.Date == dph.Date).ToList();
+                                        <div style="padding: 5px;">
+                                            <strong style="display: block; margin-bottom: 5px;">@dph.Date.ToString("MMM dd, yyyy")</strong>
+                                            <ul class="mb-0 ps-3" style="font-size: 0.9em; margin: 0; padding-left: 15px;">
+                                            @foreach(var r in dayRecords.OrderByDescending(x => x.Hours))
+                                            {
+                                                <li>@r.ProjectName: @FormatAsHours(r.Hours)</li>
+                                            }
+                                            </ul>
+                                        </div>
+                                    }
+                                </TooltipTemplate>
+                            </RadzenStackedColumnSeries>
+                        }
+                        else if (SelectedChartType == 2)
+                        {
+                            <RadzenLineSeries Data="@ChartData.Where(d => d.ProjectName == projectName)" 
+                                              CategoryProperty="Date" 
+                                              Title="@projectName" 
+                                              ValueProperty="Hours">
+                                <ChildContent>
+                                    <RadzenMarkers MarkerType="MarkerType.Circle" />
+                                </ChildContent>
+                                <TooltipTemplate Context="data">
+                                    @{
+                                        var dph = (DailyProjectHours)data;
+                                        var dayRecords = ChartData.Where(x => x.Date == dph.Date).ToList();
+                                        <div style="padding: 5px;">
+                                            <strong style="display: block; margin-bottom: 5px;">@dph.Date.ToString("MMM dd, yyyy")</strong>
+                                            <ul class="mb-0 ps-3" style="font-size: 0.9em; margin: 0; padding-left: 15px;">
+                                            @foreach(var r in dayRecords.OrderByDescending(x => x.Hours))
+                                            {
+                                                <li>@r.ProjectName: @FormatAsHours(r.Hours)</li>
+                                            }
+                                            </ul>
+                                        </div>
+                                    }
+                                </TooltipTemplate>
+                            </RadzenLineSeries>
+                        }
+                        else if (SelectedChartType == 4)
+                        {
+                            <RadzenStackedAreaSeries Data="@ChartData.Where(d => d.ProjectName == projectName)" 
+                                                     CategoryProperty="Date" 
+                                                     Title="@projectName" 
+                                                     ValueProperty="Hours">
+                                <ChildContent>
+                                    <RadzenMarkers MarkerType="MarkerType.Circle" />
+                                </ChildContent>
+                                <TooltipTemplate Context="data">
+                                    @{
+                                        var dph = (DailyProjectHours)data;
+                                        var dayRecords = ChartData.Where(x => x.Date == dph.Date).ToList();
+                                        <div style="padding: 5px;">
+                                            <strong style="display: block; margin-bottom: 5px;">@dph.Date.ToString("MMM dd, yyyy")</strong>
+                                            <ul class="mb-0 ps-3" style="font-size: 0.9em; margin: 0; padding-left: 15px;">
+                                            @foreach(var r in dayRecords.OrderByDescending(x => x.Hours))
+                                            {
+                                                <li>@r.ProjectName: @FormatAsHours(r.Hours)</li>
+                                            }
+                                            </ul>
+                                        </div>
+                                    }
+                                </TooltipTemplate>
+                            </RadzenStackedAreaSeries>
+                        }
+                    }
+                    <RadzenColumnOptions Radius="5" />
+                    <RadzenValueAxis Formatter="@FormatAsHours">
+                        <RadzenGridLines Visible="true" />
+                        <RadzenAxisTitle Text="Hours Worked" />
+                    </RadzenValueAxis>
+                    <RadzenCategoryAxis FormatString="{0:MMM dd}">
+                        <RadzenAxisTitle Text="Date" />
+                    </RadzenCategoryAxis>
+                    <RadzenLegend Position="LegendPosition.Bottom" />
+                </RadzenChart>
+            }
+        </div>
+    </div>
+
     <div class="table-responsive">
         <table class="table table-striped">
             <thead>
@@ -58,9 +230,38 @@ else
 }
 
 @code {
+    public class DailyProjectHours
+    {
+        public DateTime Date { get; set; }
+        public double Hours { get; set; }
+        public string ProjectName { get; set; } = string.Empty;
+    }
+
+    public class ProjectSummaryHours
+    {
+        public string ProjectName { get; set; } = string.Empty;
+        public double TotalHours { get; set; }
+    }
+
+    public class ScatterEntry
+    {
+        public string ProjectName { get; set; } = string.Empty;
+        public int ProjectIndex { get; set; }
+        public double XOffset { get; set; }
+        public double Hours { get; set; }
+        public DateTime Start { get; set; }
+        public string Description { get; set; } = string.Empty;
+    }
+
+    private bool IsLoading = false;
+    private int SelectedChartType = 1;
     private DateTime StartDate = DateTime.Today.AddDays(-7);
     private DateTime EndDate = DateTime.Today.AddDays(1);
     private List<TimeEntry>? TimeEntries;
+    private List<DailyProjectHours> ChartData = new();
+    private List<ProjectSummaryHours> PieChartData = new();
+    private List<ScatterEntry> ScatterChartData = new();
+    private Dictionary<int, string> ProjectIndexToName = new();
     private Dictionary<long, Project> Projects = new();
     private Dictionary<long, Client> Clients = new();
 
@@ -69,14 +270,39 @@ else
         await LoadData();
     }
 
+    private async Task OnChartTypeChanged(int newType)
+    {
+        IsLoading = true;
+        StateHasChanged();
+        
+        // Yield to let the UI render the loading spinner
+        await Task.Delay(10);
+        
+        SelectedChartType = newType;
+        
+        IsLoading = false;
+        StateHasChanged();
+    }
+
     private async Task LoadData()
     {
-        TimeEntries = await TogglService.GetLocalTimeEntriesAsync(StartDate, EndDate);
+        IsLoading = true;
+        StateHasChanged();
+        await Task.Delay(1); // Force UI update
 
-        // Fetch metadata if we have an API key
-        if (TogglService.HasApiKey)
+        try
         {
-            try 
+            TimeEntries = await TogglService.GetLocalTimeEntriesAsync(StartDate, EndDate);
+
+            // Fetch local projects as fallback 
+            var localProjects = await DbContext.Projects.ToListAsync();
+            foreach(var p in localProjects)
+            {
+                if (!Projects.ContainsKey(p.Id)) Projects[p.Id] = p;
+            }
+
+            // Fetch metadata if we have an API key
+            if (TogglService.HasApiKey)
             {
                 var workspaces = await TogglService.FetchWorkspacesAsync();
                 foreach (var ws in workspaces)
@@ -100,11 +326,88 @@ else
                     }
                 }
             }
-            catch (Exception ex)
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching data: {ex.Message}");
+        }
+        finally
+        {
+            if (TimeEntries != null)
             {
-                Console.WriteLine($"Error fetching metadata: {ex.Message}");
+                ChartData = TimeEntries
+                    .GroupBy(t => new { Date = t.Start.ToLocalTime().Date, ProjectId = t.ProjectId })
+                    .Select(g => new DailyProjectHours
+                    {
+                        Date = g.Key.Date,
+                        ProjectName = GetProjectName(g.Key.ProjectId),
+                        Hours = g.Sum(t => t.GetDuration().TotalHours)
+                    })
+                    .OrderBy(d => d.Date)
+                    .ToList();
+
+                PieChartData = ChartData
+                    .GroupBy(d => d.ProjectName)
+                    .Select(g => new ProjectSummaryHours
+                    {
+                        ProjectName = g.Key,
+                        TotalHours = g.Sum(x => x.Hours)
+                    })
+                    .OrderByDescending(p => p.TotalHours)
+                    .ToList();
+
+                var distinctProjects = ChartData.Select(d => d.ProjectName).Distinct().ToList();
+                for (int i = 0; i < distinctProjects.Count; i++) {
+                    ProjectIndexToName[i] = distinctProjects[i];
+                }
+                var projectNameToIndex = distinctProjects.Select((name, index) => new { name, index }).ToDictionary(x => x.name, x => x.index);
+
+                ScatterChartData = TimeEntries.Select(t => {
+                    var projName = GetProjectName(t.ProjectId);
+                    var pIndex = projectNameToIndex.ContainsKey(projName) ? projectNameToIndex[projName] : 0;
+                    
+                    var hourFraction = t.Start.ToLocalTime().TimeOfDay.TotalHours / 24.0;
+                    var jitter = (hourFraction - 0.5) * 0.8; 
+                    
+                    return new ScatterEntry
+                    {
+                        ProjectName = projName,
+                        ProjectIndex = pIndex,
+                        XOffset = pIndex + jitter,
+                        Hours = t.GetDuration().TotalHours,
+                        Start = t.Start.ToLocalTime(),
+                        Description = t.Description ?? "(no description)"
+                    };
+                }).ToList();
+            }
+
+            IsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private string FormatProjectAxis(object value)
+    {
+        try 
+        {
+            double d = Convert.ToDouble(value);
+            int idx = (int)Math.Round(d);
+            if (ProjectIndexToName.TryGetValue(idx, out var name)) 
+            {
+                if (Math.Abs(d - idx) < 0.1) return name;
             }
         }
+        catch { }
+        return string.Empty;
+    }
+
+    private string FormatAsHours(object value)
+    {
+        if (value is double hours)
+        {
+            return $"{hours:F1}h";
+        }
+        return value?.ToString() ?? string.Empty;
     }
 
     private string GetProjectName(long? projectId)

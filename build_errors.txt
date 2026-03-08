@@ -1,0 +1,21 @@
+  Wiederherzustellende Projekte werden ermittelt...
+C:\Program Files\dotnet\sdk\10.0.103\Sdks\Microsoft.NET.Sdk\targets\Microsoft.NET.EolTargetFrameworks.targets(32,5): warning NETSDK1138: Das Zielframework "net7.0" wird nicht mehr unterstützt und erhält in Zukunft keine Sicherheitsupdates mehr. Weitere Informationen zur Supportrichtlinie finden Sie unter "https://aka.ms/dotnet-core-support". [C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\TogglAnalysis.csproj]
+  Alle Projekte sind für die Wiederherstellung auf dem neuesten Stand.
+C:\Program Files\dotnet\sdk\10.0.103\Sdks\Microsoft.NET.Sdk\targets\Microsoft.NET.EolTargetFrameworks.targets(32,5): warning NETSDK1138: Das Zielframework "net7.0" wird nicht mehr unterstützt und erhält in Zukunft keine Sicherheitsupdates mehr. Weitere Informationen zur Supportrichtlinie finden Sie unter "https://aka.ms/dotnet-core-support". [C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\TogglAnalysis.csproj]
+C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\Pages\Analysis.razor(78,25): warning RZ10012: Found markup element with unexpected name 'RadzenScatterSeries'. If this is intended to be a component, add a @using directive for its namespace. [C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\TogglAnalysis.csproj]
+C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\Pages\Analysis.razor(82,29): warning RZ10012: Found markup element with unexpected name 'ChildContent'. If this is intended to be a component, add a @using directive for its namespace. [C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\TogglAnalysis.csproj]
+C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\Pages\Analysis.razor(85,29): warning RZ10012: Found markup element with unexpected name 'TooltipTemplate'. If this is intended to be a component, add a @using directive for its namespace. [C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\TogglAnalysis.csproj]
+C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\Pages\Analysis.razor(87,60): error CS0103: Der Name "data" ist im aktuellen Kontext nicht vorhanden. [C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\TogglAnalysis.csproj]
+
+Fehler beim Buildvorgang.
+
+C:\Program Files\dotnet\sdk\10.0.103\Sdks\Microsoft.NET.Sdk\targets\Microsoft.NET.EolTargetFrameworks.targets(32,5): warning NETSDK1138: Das Zielframework "net7.0" wird nicht mehr unterstützt und erhält in Zukunft keine Sicherheitsupdates mehr. Weitere Informationen zur Supportrichtlinie finden Sie unter "https://aka.ms/dotnet-core-support". [C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\TogglAnalysis.csproj]
+C:\Program Files\dotnet\sdk\10.0.103\Sdks\Microsoft.NET.Sdk\targets\Microsoft.NET.EolTargetFrameworks.targets(32,5): warning NETSDK1138: Das Zielframework "net7.0" wird nicht mehr unterstützt und erhält in Zukunft keine Sicherheitsupdates mehr. Weitere Informationen zur Supportrichtlinie finden Sie unter "https://aka.ms/dotnet-core-support". [C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\TogglAnalysis.csproj]
+C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\Pages\Analysis.razor(78,25): warning RZ10012: Found markup element with unexpected name 'RadzenScatterSeries'. If this is intended to be a component, add a @using directive for its namespace. [C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\TogglAnalysis.csproj]
+C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\Pages\Analysis.razor(82,29): warning RZ10012: Found markup element with unexpected name 'ChildContent'. If this is intended to be a component, add a @using directive for its namespace. [C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\TogglAnalysis.csproj]
+C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\Pages\Analysis.razor(85,29): warning RZ10012: Found markup element with unexpected name 'TooltipTemplate'. If this is intended to be a component, add a @using directive for its namespace. [C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\TogglAnalysis.csproj]
+C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\Pages\Analysis.razor(87,60): error CS0103: Der Name "data" ist im aktuellen Kontext nicht vorhanden. [C:\Users\henri\source\anitgravity\project_1\TogglAnalysis\TogglAnalysis.csproj]
+    5 Warnung(en)
+    1 Fehler
+
+Verstrichene Zeit 00:00:02.21

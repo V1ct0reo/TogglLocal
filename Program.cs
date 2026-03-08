@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using TogglAnalysis.Data;
 using TogglAnalysis.Models;
 using TogglAnalysis.Services;
-
+using Radzen;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -13,7 +13,7 @@ builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 builder.Services.AddHttpClient();
 builder.Services.AddScoped<TogglService>();
-
+builder.Services.AddRadzenComponents();
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
