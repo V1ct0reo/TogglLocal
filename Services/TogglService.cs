@@ -56,6 +56,34 @@ namespace TogglAnalysis.Services
             return clients ?? new List<Client>();
         }
 
+        public async Task SyncMetadataAsync()
+        {
+            if (!HasApiKey) return;
+            try
+            {
+                var workspaces = await FetchWorkspacesAsync();
+                foreach (var ws in workspaces)
+                {
+                    var existingWs = await _dbContext.Workspaces.FindAsync(ws.Id);
+                    if (existingWs == null) _dbContext.Workspaces.Add(ws);
+                    else _dbContext.Entry(existingWs).CurrentValues.SetValues(ws);
+
+                    var projects = await FetchProjectsAsync(ws.Id);
+                    foreach (var p in projects)
+                    {
+                        var existingP = await _dbContext.Projects.FindAsync(p.Id);
+                        if (existingP == null) _dbContext.Projects.Add(p);
+                        else _dbContext.Entry(existingP).CurrentValues.SetValues(p);
+                    }
+                }
+                await _dbContext.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error syncing metadata: {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// Syncs time entries from Toggl for the given date range.
         /// The Toggl API (GET /me/time_entries) enforces a maximum date range of ~3 months.
