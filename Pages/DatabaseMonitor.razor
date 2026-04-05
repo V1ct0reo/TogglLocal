@@ -1,0 +1,750 @@
+@page "/db-monitor"
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inject TogglAnalysis.Data.AppDbContext DbContext
+@inject TogglAnalysis.Services.TogglService TogglService
+@using Microsoft.EntityFrameworkCore
+@using System.IO
+
+<PageTitle>DB Monitor</PageTitle>
+
+<h3 class="mb-4" style="font-family: 'Inter', sans-serif;">
+    <span class="oi oi-spreadsheet me-2" aria-hidden="true"></span>Database Monitor
+</h3>
+
+@if (IsLoading)
+{
+    <div class="d-flex flex-column align-items-center justify-content-center my-5">
+        <RadzenProgressBar Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Style="width: 300px; margin-bottom: 20px;" />
+        <p class="text-muted" style="font-family: 'Inter', sans-serif;">Querying database...</p>
+    </div>
+}
+else
+{
+    @* ──────── Database-Level Summary ──────── *@
+    <div class="card mb-4 shadow-sm border-0" style="border-radius: 12px; overflow: hidden;">
+        <div class="card-header bg-white border-0 pt-4 px-4 pb-2">
+            <h5 class="fw-bold mb-0 text-primary" style="font-family: 'Inter', sans-serif;">Database Overview</h5>
+        </div>
+        <div class="card-body px-4 pb-4 pt-2">
+            <div class="row g-3">
+                <div class="col-md-3 col-sm-6">
+                    <div class="p-3 rounded-3 bg-light text-center">
+                        <div class="text-muted small mb-1">SQLite Version</div>
+                        <div class="fw-bold fs-5">@SqliteVersion</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div class="p-3 rounded-3 bg-light text-center">
+                        <div class="text-muted small mb-1">DB File Size</div>
+                        <div class="fw-bold fs-5">@FormatBytes(DbFileSize)</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div class="p-3 rounded-3 bg-light text-center">
+                        <div class="text-muted small mb-1">Total Tables</div>
+                        <div class="fw-bold fs-5">@TableStats.Count</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div class="p-3 rounded-3 bg-light text-center">
+                        <div class="text-muted small mb-1">Total Rows</div>
+                        <div class="fw-bold fs-5">@TableStats.Sum(t => t.RowCount).ToString("N0")</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div class="p-3 rounded-3 bg-light text-center">
+                        <div class="text-muted small mb-1">Page Size</div>
+                        <div class="fw-bold fs-5">@FormatBytes(PageSize)</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div class="p-3 rounded-3 bg-light text-center">
+                        <div class="text-muted small mb-1">Total Pages</div>
+                        <div class="fw-bold fs-5">@PageCount.ToString("N0")</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div class="p-3 rounded-3 bg-light text-center">
+                        <div class="text-muted small mb-1">Free Pages</div>
+                        <div class="fw-bold fs-5">@FreeListCount.ToString("N0")</div>
+                    </div>
+                </div>
+                <div class="col-md-3 col-sm-6">
+                    <div class="p-3 rounded-3 bg-light text-center">
+                        <div class="text-muted small mb-1">Space Utilization</div>
+                        <div class="fw-bold fs-5">@SpaceUtilization.ToString("F1")%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ──────── Data Freshness ──────── *@
+    <div class="card mb-4 shadow-sm border-0" style="border-radius: 12px; overflow: hidden;">
+        <div class="card-header bg-white border-0 pt-4 px-4 pb-2">
+            <h5 class="fw-bold mb-0 text-primary" style="font-family: 'Inter', sans-serif;">Data Freshness</h5>
+        </div>
+        <div class="card-body px-4 pb-4 pt-2">
+            @if (TimeEntryCount > 0)
+            {
+                <div class="row g-3">
+                    <div class="col-md-3 col-sm-6">
+                        <div class="p-3 rounded-3 bg-light text-center">
+                            <div class="text-muted small mb-1">Time Entries</div>
+                            <div class="fw-bold fs-5">@TimeEntryCount.ToString("N0")</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="p-3 rounded-3 bg-light text-center">
+                            <div class="text-muted small mb-1">Oldest Entry</div>
+                            <div class="fw-bold fs-6">@OldestEntry?.ToLocalTime().ToString("MMM dd, yyyy")</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="p-3 rounded-3 bg-light text-center">
+                            <div class="text-muted small mb-1">Newest Entry</div>
+                            <div class="fw-bold fs-6">@NewestEntry?.ToLocalTime().ToString("MMM dd, yyyy")</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="p-3 rounded-3 bg-light text-center">
+                            <div class="text-muted small mb-1">Running Entries</div>
+                            <div class="fw-bold fs-5 @(RunningEntries > 0 ? "text-warning" : "")">@RunningEntries</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="p-3 rounded-3 bg-light text-center">
+                            <div class="text-muted small mb-1">Date Span</div>
+                            <div class="fw-bold fs-6">@DateSpanDays days</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="p-3 rounded-3 bg-light text-center">
+                            <div class="text-muted small mb-1">Distinct Projects</div>
+                            <div class="fw-bold fs-5">@DistinctProjects</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="p-3 rounded-3 bg-light text-center">
+                            <div class="text-muted small mb-1">Distinct Workspaces</div>
+                            <div class="fw-bold fs-5">@DistinctWorkspaces</div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 col-sm-6">
+                        <div class="p-3 rounded-3 bg-light text-center">
+                            <div class="text-muted small mb-1">Total Hours Tracked</div>
+                            <div class="fw-bold fs-5">@TotalHoursTracked.ToString("F1")h</div>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <p class="text-muted mb-0">No time entries in the database yet. Sync some data from the Dashboard first.</p>
+            }
+        </div>
+    </div>
+
+    @if (TimeEntryCount > 0)
+    {
+        @* ──────── Calendar Heatmap ──────── *@
+        <div class="card mb-4 shadow-sm border-0" style="border-radius: 12px; overflow: hidden;">
+            <div class="card-header bg-white border-0 pt-4 px-4 pb-2">
+                <h5 class="fw-bold mb-0 text-primary" style="font-family: 'Inter', sans-serif;">Daily Activity Heatmap</h5>
+                <small class="text-muted">Hours tracked per day — darker = more hours. Gaps are immediately visible.</small>
+            </div>
+            <div class="card-body px-4 pb-4 pt-2">
+                <div style="overflow-x: auto;">
+                    <div style="display: flex; flex-wrap: wrap; gap: 3px; min-width: fit-content;">
+                        @foreach (var day in HeatmapData)
+                        {
+                            <div title="@day.Date.ToString("ddd, MMM dd yyyy"): @day.Hours.ToString("F1")h"
+                                 style="width: 14px; height: 14px; border-radius: 2px; background-color: @GetHeatmapColor(day.Hours); cursor: pointer;"
+                                 @onclick="() => SelectedHeatmapDay = day">
+                            </div>
+                        }
+                    </div>
+                    <div class="d-flex align-items-center gap-2 mt-3">
+                        <small class="text-muted">Less</small>
+                        <div style="width: 14px; height: 14px; border-radius: 2px; background-color: #ebedf0;"></div>
+                        <div style="width: 14px; height: 14px; border-radius: 2px; background-color: #9be9a8;"></div>
+                        <div style="width: 14px; height: 14px; border-radius: 2px; background-color: #40c463;"></div>
+                        <div style="width: 14px; height: 14px; border-radius: 2px; background-color: #30a14e;"></div>
+                        <div style="width: 14px; height: 14px; border-radius: 2px; background-color: #216e39;"></div>
+                        <small class="text-muted">More</small>
+                        @if (SelectedHeatmapDay != null)
+                        {
+                            <span class="ms-3 badge bg-primary" style="font-size: 0.85em;">
+                                @SelectedHeatmapDay.Date.ToString("ddd, MMM dd yyyy") — @SelectedHeatmapDay.Hours.ToString("F1")h (@SelectedHeatmapDay.EntryCount entries)
+                            </span>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ──────── Usage Intensity Chart ──────── *@
+        <div class="card mb-4 shadow-sm border-0" style="border-radius: 12px; overflow: hidden;">
+            <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center pt-4 px-4 pb-2">
+                <div>
+                    <h5 class="fw-bold mb-0 text-primary" style="font-family: 'Inter', sans-serif;">Usage Intensity</h5>
+                    <small class="text-muted">Total hours tracked per period</small>
+                </div>
+                <RadzenSelectBar Value="SelectedGranularity" TValue="int" Size="ButtonSize.Small" ValueChanged="@OnGranularityChanged">
+                    <Items>
+                        <RadzenSelectBarItem Text="Day" Value="1" />
+                        <RadzenSelectBarItem Text="Week" Value="2" />
+                        <RadzenSelectBarItem Text="Month" Value="3" />
+                    </Items>
+                </RadzenSelectBar>
+            </div>
+            <div class="card-body p-4 bg-light">
+                <RadzenChart Style="height: 300px;">
+                    <RadzenColumnSeries Data="@UsageChartData" CategoryProperty="Label" ValueProperty="Hours" Title="Hours">
+                        <TooltipTemplate Context="data">
+                            @{
+                                var item = (UsagePeriod)data;
+                                <div style="padding: 5px;">
+                                    <strong style="display: block; margin-bottom: 3px;">@item.Label</strong>
+                                    <span>@item.Hours.ToString("F1") hours</span><br/>
+                                    <span class="text-muted" style="font-size: 0.85em;">@item.EntryCount entries</span>
+                                </div>
+                            }
+                        </TooltipTemplate>
+                    </RadzenColumnSeries>
+                    <RadzenColumnOptions Radius="3" />
+                    <RadzenValueAxis Formatter="@FormatHoursAxis">
+                        <RadzenGridLines Visible="true" />
+                        <RadzenAxisTitle Text="Hours Tracked" />
+                    </RadzenValueAxis>
+                    <RadzenCategoryAxis>
+                        <RadzenAxisTitle Text="@GetGranularityLabel()" />
+                    </RadzenCategoryAxis>
+                </RadzenChart>
+                <div class="d-flex justify-content-between mt-2 px-2">
+                    <small class="text-muted">Avg: <strong>@(UsageChartData.Any() ? (UsageChartData.Average(u => u.Hours)).ToString("F1") : "0")h</strong> per @GetGranularityLabel().ToLower()</small>
+                    <small class="text-muted">Max: <strong>@(UsageChartData.Any() ? UsageChartData.Max(u => u.Hours).ToString("F1") : "0")h</strong></small>
+                </div>
+            </div>
+        </div>
+
+        @* ──────── Data Gap Detector ──────── *@
+        <div class="card mb-4 shadow-sm border-0" style="border-radius: 12px; overflow: hidden;">
+            <div class="card-header bg-white border-0 pt-4 px-4 pb-2">
+                <h5 class="fw-bold mb-0 text-primary" style="font-family: 'Inter', sans-serif;">Data Gaps</h5>
+                <small class="text-muted">Consecutive days with zero time entries — sorted by gap length</small>
+            </div>
+            <div class="card-body px-4 pb-4 pt-2">
+                @if (DataGaps.Any())
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Gap Start</th>
+                                    <th>Gap End</th>
+                                    <th class="text-end">Days Missing</th>
+                                    <th>Severity</th>
+                                    <th class="text-end">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var gap in DataGaps.OrderByDescending(g => g.Days).Take(20))
+                                {
+                                    <tr>
+                                        <td>@gap.Start.ToString("ddd, MMM dd yyyy")</td>
+                                        <td>@gap.End.ToString("ddd, MMM dd yyyy")</td>
+                                        <td class="text-end fw-bold">@gap.Days</td>
+                                        <td>
+                                            @if (gap.Days >= 7)
+                                            {
+                                                <span class="badge bg-danger">Major</span>
+                                            }
+                                            else if (gap.Days >= 3)
+                                            {
+                                                <span class="badge bg-warning text-dark">Moderate</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary bg-opacity-50 text-dark">Minor</span>
+                                            }
+                                        </td>
+                                        <td class="text-end">
+                                            @if (SyncingGapId == gap.Id)
+                                            {
+                                                <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+                                            }
+                                            else if (GapErrors.ContainsKey(gap.Id))
+                                            {
+                                                <span class="text-danger small" title="@GapErrors[gap.Id]">⚠ Failed — hover for details</span>
+                                            }
+                                            else if (TogglService.HasApiKey)
+                                            {
+                                                <button class="btn btn-sm btn-outline-primary" @onclick="() => SyncGap(gap)" disabled="@(SyncingGapId != null)">
+                                                    <span class="oi oi-cloud-download me-1"></span>Sync
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted small">No API key</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <small class="text-muted mt-2 d-block">Showing top @Math.Min(20, DataGaps.Count) of @DataGaps.Count total gaps (weekends included)</small>
+                }
+                else
+                {
+                    <div class="text-center py-3">
+                        <span class="text-success fw-bold">✓ No gaps detected — every day in the range has at least one time entry!</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @* ──────── Per-Table Detail ──────── *@
+    <div class="card mb-4 shadow-sm border-0" style="border-radius: 12px; overflow: hidden;">
+        <div class="card-header bg-white border-0 pt-4 px-4 pb-2">
+            <h5 class="fw-bold mb-0 text-primary" style="font-family: 'Inter', sans-serif;">Table Details</h5>
+        </div>
+        <div class="card-body px-4 pb-4 pt-2">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="min-width: 200px;">Table Name</th>
+                            <th class="text-end" style="width: 120px;">Rows</th>
+                            <th class="text-end" style="width: 120px;">Columns</th>
+                            <th>Column Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var table in TableStats.OrderByDescending(t => t.RowCount))
+                        {
+                            <tr>
+                                <td>
+                                    <code>@table.Name</code>
+                                </td>
+                                <td class="text-end fw-bold">@table.RowCount.ToString("N0")</td>
+                                <td class="text-end">@table.Columns.Count</td>
+                                <td>
+                                    <div class="d-flex flex-wrap gap-1">
+                                        @foreach (var col in table.Columns)
+                                        {
+                                            <span class="badge @(col.IsPrimaryKey ? "bg-primary" : "bg-secondary bg-opacity-25 text-dark")" 
+                                                  style="font-weight: 500; font-size: 0.75em;">
+                                                @col.Name
+                                                <span class="opacity-75">(@col.Type)</span>
+                                                @if (col.IsPrimaryKey)
+                                                {
+                                                    <span class="ms-1">🔑</span>
+                                                }
+                                            </span>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ──────── Refresh Button ──────── *@
+    <div class="text-center mb-4">
+        <button class="btn btn-outline-primary" @onclick="LoadStats">
+            <span class="oi oi-reload me-1"></span> Refresh Stats
+        </button>
+        <span class="text-muted ms-3 small">Last refreshed: @LastRefresh.ToLocalTime().ToString("HH:mm:ss")</span>
+    </div>
+}
+
+@code {
+    private bool IsLoading = true;
+    private DateTime LastRefresh = DateTime.UtcNow;
+
+    // DB-level
+    private string SqliteVersion = "";
+    private long DbFileSize = 0;
+    private long PageSize = 0;
+    private long PageCount = 0;
+    private long FreeListCount = 0;
+    private double SpaceUtilization = 0;
+
+    // Data freshness
+    private int TimeEntryCount = 0;
+    private DateTime? OldestEntry;
+    private DateTime? NewestEntry;
+    private int RunningEntries = 0;
+    private int DateSpanDays = 0;
+    private int DistinctProjects = 0;
+    private int DistinctWorkspaces = 0;
+    private double TotalHoursTracked = 0;
+
+    // Visualizations
+    private List<HeatmapDay> HeatmapData = new();
+    private HeatmapDay? SelectedHeatmapDay;
+    private int SelectedGranularity = 2; // default: Week
+    private List<UsagePeriod> UsageChartData = new();
+    private List<DataGap> DataGaps = new();
+    private double MaxDailyHours = 1;
+    private string? SyncingGapId;
+    private Dictionary<string, string> GapErrors = new();
+
+    // Per-table
+    private List<TableInfo> TableStats = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStats();
+    }
+
+    private async Task LoadStats()
+    {
+        IsLoading = true;
+        StateHasChanged();
+        await Task.Delay(1);
+
+        try
+        {
+            var conn = DbContext.Database.GetDbConnection();
+            await conn.OpenAsync();
+
+            // SQLite version
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT sqlite_version()";
+                SqliteVersion = (await cmd.ExecuteScalarAsync())?.ToString() ?? "unknown";
+            }
+
+            // Page size
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "PRAGMA page_size";
+                PageSize = Convert.ToInt64(await cmd.ExecuteScalarAsync());
+            }
+
+            // Page count
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "PRAGMA page_count";
+                PageCount = Convert.ToInt64(await cmd.ExecuteScalarAsync());
+            }
+
+            // Free list
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "PRAGMA freelist_count";
+                FreeListCount = Convert.ToInt64(await cmd.ExecuteScalarAsync());
+            }
+
+            SpaceUtilization = PageCount > 0 ? ((double)(PageCount - FreeListCount) / PageCount) * 100 : 0;
+
+            // DB file size
+            var connString = DbContext.Database.GetConnectionString();
+            if (connString != null)
+            {
+                var dataSource = connString.Split(';')
+                    .Select(p => p.Trim())
+                    .FirstOrDefault(p => p.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase));
+                if (dataSource != null)
+                {
+                    var dbPath = dataSource.Substring("Data Source=".Length).Trim();
+                    if (File.Exists(dbPath))
+                    {
+                        DbFileSize = new System.IO.FileInfo(dbPath).Length;
+                    }
+                }
+            }
+
+            // CLEANUP: Drop corrupt database entities from API deserialization failures
+            var corrupt = await DbContext.TimeEntries.Where(t => t.Start.Year < 2000).ToListAsync();
+            if (corrupt.Any())
+            {
+                DbContext.TimeEntries.RemoveRange(corrupt);
+                await DbContext.SaveChangesAsync();
+            }
+
+            // Get all table names
+            var tableNames = new List<string>();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name";
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    tableNames.Add(reader.GetString(0));
+                }
+            }
+
+            // Per-table info
+            TableStats = new List<TableInfo>();
+            foreach (var tableName in tableNames)
+            {
+                var info = new TableInfo { Name = tableName };
+
+                // Row count
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = $"SELECT COUNT(*) FROM \"{tableName}\"";
+                    info.RowCount = Convert.ToInt64(await cmd.ExecuteScalarAsync());
+                }
+
+                // Column info
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = $"PRAGMA table_info(\"{tableName}\")";
+                    using var reader = await cmd.ExecuteReaderAsync();
+                    while (await reader.ReadAsync())
+                    {
+                        info.Columns.Add(new ColumnInfo
+                        {
+                            Name = reader.GetString(1),
+                            Type = reader.GetString(2),
+                            IsPrimaryKey = reader.GetInt32(5) > 0
+                        });
+                    }
+                }
+
+                TableStats.Add(info);
+            }
+
+            // Data freshness from TimeEntries
+            TimeEntryCount = await DbContext.TimeEntries.CountAsync();
+            if (TimeEntryCount > 0)
+            {
+                OldestEntry = await DbContext.TimeEntries.MinAsync(t => t.Start);
+                NewestEntry = await DbContext.TimeEntries.MaxAsync(t => t.Start);
+                RunningEntries = await DbContext.TimeEntries.CountAsync(t => t.Duration < 0);
+                DateSpanDays = OldestEntry.HasValue && NewestEntry.HasValue
+                    ? (int)(NewestEntry.Value - OldestEntry.Value).TotalDays
+                    : 0;
+                DistinctProjects = await DbContext.TimeEntries
+                    .Where(t => t.ProjectId != null)
+                    .Select(t => t.ProjectId)
+                    .Distinct()
+                    .CountAsync();
+                DistinctWorkspaces = await DbContext.TimeEntries
+                    .Select(t => t.WorkspaceId)
+                    .Distinct()
+                    .CountAsync();
+                TotalHoursTracked = await DbContext.TimeEntries
+                    .Where(t => t.Duration > 0)
+                    .SumAsync(t => t.Duration) / 3600.0;
+
+                // ── Build heatmap data ──
+                var allEntries = await DbContext.TimeEntries
+                    .Where(t => t.Duration > 0)
+                    .Select(t => new { t.Start, t.Duration })
+                    .ToListAsync();
+
+                var dailyGroups = allEntries
+                    .GroupBy(t => t.Start.ToLocalTime().Date)
+                    .ToDictionary(g => g.Key, g => new { Hours = g.Sum(t => t.Duration) / 3600.0, Count = g.Count() });
+
+                var startDate = OldestEntry!.Value.ToLocalTime().Date;
+                var endDate = NewestEntry!.Value.ToLocalTime().Date;
+                HeatmapData = new List<HeatmapDay>();
+                for (var d = startDate; d <= endDate; d = d.AddDays(1))
+                {
+                    var has = dailyGroups.TryGetValue(d, out var val);
+                    HeatmapData.Add(new HeatmapDay
+                    {
+                        Date = d,
+                        Hours = has ? val!.Hours : 0,
+                        EntryCount = has ? val!.Count : 0
+                    });
+                }
+                MaxDailyHours = HeatmapData.Any() ? HeatmapData.Max(h => h.Hours) : 1;
+                if (MaxDailyHours < 1) MaxDailyHours = 1;
+
+                // ── Build usage chart data ──
+                BuildUsageChart();
+
+                // ── Detect gaps ──
+                DataGaps = new List<DataGap>();
+                DateTime? gapStart = null;
+                for (var d = startDate; d <= endDate; d = d.AddDays(1))
+                {
+                    if (!dailyGroups.ContainsKey(d))
+                    {
+                        gapStart ??= d;
+                    }
+                    else if (gapStart.HasValue)
+                    {
+                        DataGaps.Add(new DataGap { Start = gapStart.Value, End = d.AddDays(-1), Days = (int)(d - gapStart.Value).TotalDays });
+                        gapStart = null;
+                    }
+                }
+                if (gapStart.HasValue)
+                {
+                    DataGaps.Add(new DataGap { Start = gapStart.Value, End = endDate, Days = (int)(endDate - gapStart.Value).TotalDays + 1 });
+                }
+            }
+
+            LastRefresh = DateTime.UtcNow;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"DB Monitor error: {ex.Message}");
+        }
+        finally
+        {
+            IsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F2} MB";
+    }
+
+    private string GetHeatmapColor(double hours)
+    {
+        if (hours <= 0) return "#ebedf0";
+        var ratio = hours / MaxDailyHours;
+        if (ratio < 0.25) return "#9be9a8";
+        if (ratio < 0.50) return "#40c463";
+        if (ratio < 0.75) return "#30a14e";
+        return "#216e39";
+    }
+
+    private void OnGranularityChanged(int newValue)
+    {
+        SelectedGranularity = newValue;
+        BuildUsageChart();
+    }
+
+    private void BuildUsageChart()
+    {
+        if (!HeatmapData.Any()) { UsageChartData = new(); return; }
+
+        switch (SelectedGranularity)
+        {
+            case 1: // Day
+                UsageChartData = HeatmapData.Select(d => new UsagePeriod
+                {
+                    Label = d.Date.ToString("MMM dd"),
+                    Hours = d.Hours,
+                    EntryCount = d.EntryCount
+                }).ToList();
+                break;
+            case 2: // Week
+                UsageChartData = HeatmapData
+                    .GroupBy(d => {
+                        var diff = (7 + (d.Date.DayOfWeek - DayOfWeek.Monday)) % 7;
+                        return d.Date.AddDays(-diff);
+                    })
+                    .OrderBy(g => g.Key)
+                    .Select(g => new UsagePeriod
+                    {
+                        Label = $"{g.Key:MMM dd}",
+                        Hours = g.Sum(x => x.Hours),
+                        EntryCount = g.Sum(x => x.EntryCount)
+                    }).ToList();
+                break;
+            case 3: // Month
+                UsageChartData = HeatmapData
+                    .GroupBy(d => new DateTime(d.Date.Year, d.Date.Month, 1))
+                    .OrderBy(g => g.Key)
+                    .Select(g => new UsagePeriod
+                    {
+                        Label = g.Key.ToString("MMM yyyy"),
+                        Hours = g.Sum(x => x.Hours),
+                        EntryCount = g.Sum(x => x.EntryCount)
+                    }).ToList();
+                break;
+        }
+    }
+
+    private string FormatHoursAxis(object value)
+    {
+        if (value is double hours) return $"{hours:F0}h";
+        return value?.ToString() ?? "";
+    }
+
+    private string GetGranularityLabel()
+    {
+        return SelectedGranularity switch { 1 => "Day", 2 => "Week", 3 => "Month", _ => "Period" };
+    }
+
+    private async Task SyncGap(DataGap gap)
+    {
+        SyncingGapId = gap.Id;
+        GapErrors.Remove(gap.Id);
+        StateHasChanged();
+        try
+        {
+            await TogglService.SyncTimeEntriesAsync(gap.Start, gap.End.AddDays(1));
+            // Clear EF change tracker to avoid stale entity conflicts on reload
+            DbContext.ChangeTracker.Clear();
+            await LoadStats();
+        }
+        catch (HttpRequestException httpEx)
+        {
+            // Toggl API GET /me/time_entries enforces a ~3 month max date range.
+            // SyncTimeEntriesAsync now chunks automatically, so a 400 likely means
+            // the date range is otherwise invalid or the API key has expired.
+            var msg = httpEx.StatusCode?.ToString() == "BadRequest"
+                ? "Toggl API returned 400 (Bad Request). The date range may be invalid, or your API token may have expired. Try re-entering your API key in Settings."
+                : $"HTTP {httpEx.StatusCode}: {httpEx.Message}";
+            GapErrors[gap.Id] = msg;
+            Console.WriteLine($"Gap sync error: {httpEx.Message}");
+        }
+        catch (Exception ex)
+        {
+            GapErrors[gap.Id] = $"Error: {ex.Message}";
+            Console.WriteLine($"Gap sync error: {ex.Message}");
+        }
+        finally
+        {
+            SyncingGapId = null;
+            StateHasChanged();
+        }
+    }
+
+    public class TableInfo
+    {
+        public string Name { get; set; } = "";
+        public long RowCount { get; set; }
+        public List<ColumnInfo> Columns { get; set; } = new();
+    }
+
+    public class ColumnInfo
+    {
+        public string Name { get; set; } = "";
+        public string Type { get; set; } = "";
+        public bool IsPrimaryKey { get; set; }
+    }
+
+    public class HeatmapDay
+    {
+        public DateTime Date { get; set; }
+        public double Hours { get; set; }
+        public int EntryCount { get; set; }
+    }
+
+    public class UsagePeriod
+    {
+        public string Label { get; set; } = "";
+        public double Hours { get; set; }
+        public int EntryCount { get; set; }
+    }
+
+    public class DataGap
+    {
+        public string Id => $"{Start:yyyyMMdd}-{End:yyyyMMdd}";
+        public DateTime Start { get; set; }
+        public DateTime End { get; set; }
+        public int Days { get; set; }
+    }
+}
